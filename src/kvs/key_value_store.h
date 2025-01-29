@@ -13,6 +13,7 @@
 
 #include "store/in_memory_store.h"
 #include <unordered_map>
+#include <stack>
 
 /**
  * @brief The Key Value Store implementation of an In Memory DB.
@@ -48,6 +49,7 @@ public:
 
 private:
   std::unordered_map<std::string, T> store_;
+  std::stack<std::unordered_map<std::string, T>> snapshots_;
 };
 
 /** ---------- MAIN PUBLIC METHODS ---------- */
@@ -83,15 +85,22 @@ template <typename T> void KeyValueStore<T>::Del(std::string_view key) {
 }
 
 template <typename T> void KeyValueStore<T>::Begin() {
-  throw std::logic_error("KeyValueStore<T>::Begin not implemented.");
+  auto copied_map = store_;
+  snapshots_.push(copied_map);
 }
 
 template <typename T> void KeyValueStore<T>::Commit() {
-  throw std::logic_error("KeyValueStore<T>::Commit not implemented.");
+  while (!snapshots_.empty()) {
+    snapshots_.pop();
+  }
 }
 
 template <typename T> void KeyValueStore<T>::Rollback() {
-  throw std::logic_error("KeyValueStore<T>::Rollback not implemented.");
+  if (snapshots_.empty()) {
+    return;
+  }
+  store_ = snapshots_.top();
+  snapshots_.pop();
 }
 
 template <typename T>
