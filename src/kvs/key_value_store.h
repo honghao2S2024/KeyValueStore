@@ -12,6 +12,7 @@
 #define KEY_VALUE_STORE_H
 
 #include "store/in_memory_store.h"
+#include <unordered_map>
 
 /**
  * @brief The Key Value Store implementation of an In Memory DB.
@@ -44,22 +45,41 @@ public:
   void Begin();
   void Commit();
   void Rollback();
+
+private:
+  std::unordered_map<std::string, T> store_;
 };
 
 /** ---------- MAIN PUBLIC METHODS ---------- */
 
 template <typename T>
 std::optional<T> KeyValueStore<T>::Get(std::string_view key) const {
-  throw std::logic_error("KeyValueStore<T>::Get not implemented.");
+  auto iter = store_.find(std::string(key));
+  if (iter == store_.end()) {
+    return std::nullopt;
+  }
+  return iter->second;
 }
 
 template <typename T>
 void KeyValueStore<T>::Set(std::string_view key, const T &value) {
-  throw std::logic_error("KeyValueStore<T>::Set not implemented.");
+  //TODO: transaction
+  auto key_str = std::string(key);
+  if (!store_.contains(key_str)) {
+    ++this->num_records_;
+  }
+
+  store_[key_str] = value;
 }
 
 template <typename T> void KeyValueStore<T>::Del(std::string_view key) {
-  throw std::logic_error("KeyValueStore<T>::Del not implemented.");
+  auto iter = store_.find(std::string(key));
+  if (iter == store_.end())
+    return;
+
+  //TODO: transaction
+  store_.erase(iter);
+  --this->num_records_;
 }
 
 template <typename T> void KeyValueStore<T>::Begin() {
@@ -77,11 +97,22 @@ template <typename T> void KeyValueStore<T>::Rollback() {
 template <typename T>
 std::vector<std::string>
 KeyValueStore<T>::Keys(std::optional<T> with_value) const {
-  throw std::logic_error("KeyValueStore<T>::Keys not implemented.");
+  std::vector<std::string> result;
+  for (const auto &[key, val] : store_) {
+    if (!with_value.has_value() || with_value.value() == val) {
+      result.emplace_back(key);
+    }
+  }
+  return result;
 }
 
 template <typename T> std::vector<T> KeyValueStore<T>::Values() const {
-  throw std::logic_error("KeyValueStore<T>::Values not implemented.");
+  std::vector<T> result;
+  result.reserve(this->num_records_);
+  for (const auto &[key, val] : store_) {
+    result.emplace_back(val);
+  }
+  return result;
 }
 
 template <typename T> void KeyValueStore<T>::Show(uint32_t max_records) const {
@@ -90,7 +121,16 @@ template <typename T> void KeyValueStore<T>::Show(uint32_t max_records) const {
 
 template <typename T>
 uint32_t KeyValueStore<T>::Count(std::optional<T> with_value) const {
-  throw std::logic_error("KeyValueStore<T>::Count not implemented.");
+  if (!with_value.has_value()) {
+    return this->num_records_;
+  }
+
+  uint32_t count = 0;
+  for (const auto &kv : store_) {
+    if (kv.second == with_value.value())
+      count++;
+  }
+  return count;
 }
 
 #endif
