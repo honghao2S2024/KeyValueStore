@@ -12,6 +12,7 @@
 #define KEY_VALUE_STORE_H
 
 #include "store/in_memory_store.h"
+#include "kvs/key_value_store_transaction.h"
 #include <unordered_map>
 #include <stack>
 
@@ -49,7 +50,8 @@ public:
 
 private:
   std::unordered_map<std::string, T> store_;
-  std::stack<std::unordered_map<std::string, T>> snapshots_;
+  std::stack<KeyValueStoreTransaction<T>> transactions_;
+  int32_t count_begin_ = 0;
 };
 
 /** ---------- MAIN PUBLIC METHODS ---------- */
@@ -65,42 +67,55 @@ std::optional<T> KeyValueStore<T>::Get(std::string_view key) const {
 
 template <typename T>
 void KeyValueStore<T>::Set(std::string_view key, const T &value) {
-  //TODO: transaction
   auto key_str = std::string(key);
   if (!store_.contains(key_str)) {
     ++this->num_records_;
+
+    transactions_.push(KeyValueStoreTransaction<T>(1, key_str, std::nullopt));
+  } else {
+    transactions_.push(KeyValueStoreTransaction<T>(1, key_str, store_[key_str]));
   }
 
   store_[key_str] = value;
 }
 
 template <typename T> void KeyValueStore<T>::Del(std::string_view key) {
-  auto iter = store_.find(std::string(key));
+  auto key_str = std::string(key);
+  auto iter = store_.find(key_str);
   if (iter == store_.end())
     return;
 
-  //TODO: transaction
+  transactions_.push(KeyValueStoreTransaction<T>(2, key_str, iter->second));
+
   store_.erase(iter);
   --this->num_records_;
 }
 
 template <typename T> void KeyValueStore<T>::Begin() {
-  auto copied_map = store_;
-  snapshots_.push(copied_map);
+  ++count_begin_;
+  transactions_.push(KeyValueStoreTransaction<T>());  //type: begin
 }
 
 template <typename T> void KeyValueStore<T>::Commit() {
-  while (!snapshots_.empty()) {
-    snapshots_.pop();
+  while (!transactions_.empty()) {
+    transactions_.pop();
   }
 }
 
 template <typename T> void KeyValueStore<T>::Rollback() {
-  if (snapshots_.empty()) {
+  if (count_begin_ == 0 || transactions_.empty())
     return;
+
+  while (true) {
+    auto& transaction = transactions_.top();
+    if (transaction.is_begin()) {
+      transactions_.pop();
+      --count_begin_;
+      break;
+    }
+    transaction.rollback(this->num_records_, store_);
+    transactions_.pop();
   }
-  store_ = snapshots_.top();
-  snapshots_.pop();
 }
 
 template <typename T>
